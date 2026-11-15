@@ -6,6 +6,8 @@
 
 Caso de estudio: qué cambia en la arquitectura de una aplicación Laravel al migrarla de PHP 7 a PHP 8.3.
 
+Este documento describe **qué cambió**. El **porqué** de cada decisión, con las alternativas descartadas, está en [`DECISIONES.md`](DECISIONES.md).
+
 ---
 
 ## 1. Por qué cambió la arquitectura
@@ -16,7 +18,7 @@ Para migrar a PHP 8.3 no bastaba con cambiar la versión de PHP. **Laravel 7 no 
 |---|---|---|
 | PHP | 7.2.5 – 8.0 | 8.3 |
 | Laravel | 7.30.7 (sin soporte desde 2021) | 13.42.0 |
-| Archivos PHP en `app/` | 25 | 10 |
+| Archivos PHP en `app/` | 25 | 12 |
 | Versiones de PHP comprobadas | — | 8.3, 8.4 y 8.5 (GitHub Actions) |
 
 ---
@@ -98,6 +100,7 @@ public/.htaccess  ──►  public/index.php   (el .env queda fuera del alcance
 |---|---|---|
 | `index.php` y `server.php` en la raíz del proyecto | `public/index.php` | En el proyecto original la raíz era pública: `/.env` (con la contraseña de la base de datos y el `APP_KEY`) podía descargarse desde el navegador |
 | `.htaccess` de la raíz enviaba todo a `index.php` | `public/.htaccess` (oficial de Laravel 13) + `.htaccess` de respaldo en la raíz, que bloquea archivos ocultos y redirige a `public/` | Defensa en profundidad si el hosting publica la raíz |
+| `/` mostraba la página de bienvenida de Laravel y PHP enviaba `X-Powered-By: PHP/x.y.z` en cada respuesta | Portada propia (`InicioController`) que describe las 4 consultas **sin versiones**, y middleware `OcultarVersionDePhp` que quita esa cabecera | No anunciar qué versiones atacar |
 | `$kernel->handle()` + `send()` + `terminate()` | `$app->handleRequest(Request::capture())` | El framework encapsula el ciclo completo |
 | `favicon.ico`, `robots.txt`, `web.config` en la raíz | Dentro de `public/` | Solo `public/` es visible desde la web |
 
@@ -123,7 +126,7 @@ public/.htaccess  ──►  public/index.php   (el .env queda fuera del alcance
 | `Authenticate`, `RedirectIfAuthenticated` | Incluidos en el framework |
 | `'throttle:60,1'` en el grupo `api` | `RateLimiter::for('api')` en `AppServiceProvider` + `throttleApi()`. Mismo límite: 60 peticiones/minuto por IP |
 
-Resultado: **la carpeta `app/Http/Middleware` desaparece** (8 archivos menos) y el proyecto deja de depender de 2 paquetes externos.
+Resultado: **los 8 middleware copiados del framework desaparecen** y el proyecto deja de depender de 2 paquetes externos. En `app/Http/Middleware` queda un solo archivo, propio del proyecto: `OcultarVersionDePhp`, registrado con `withMiddleware()`.
 
 ### 3.4 Service providers
 
@@ -164,6 +167,7 @@ La migración no cambiaba esta parte, pero al probarla con datos reales aparecie
 | Un corte de conexión del MINEDU (`cURL error 56`) lanzaba una excepción y **detenía toda la sincronización** | Método `escale()` centralizado: tiempo máximo de 60 s, 3 reintentos con 2 s de espera y, si aún falla, se registra el error y continúa con el siguiente distrito |
 | La URL de ESCALE se repetía en 4 métodos | Una sola función (`escale()`) arma todas las consultas |
 | Números sueltos en el código y el caso "objeto o lista" de ESCALE repetido en cada método | Constantes con nombre (`COLEGIOS_POR_PAGINA`, `INTENTOS`…) y una sola función `comoLista()` |
+| Si ESCALE ignorara `start` y repitiera la misma página completa, el comando consultaría sin fin | Detecta cuando una página empieza con el mismo colegio que la anterior y se detiene; además, nunca pasa de 100 páginas por distrito |
 
 Resultado verificado: sincronización completa del país sin errores: **25 regiones, 196 provincias, 1,892 distritos y 115,086 colegios**.
 
@@ -180,7 +184,7 @@ La API no usa vistas: solo `welcome.blade.php` en `/`. Este cambio sigue el est�
 
 | Antes | Después |
 |---|---|
-| Solo los ejemplos de Laravel (`ExampleTest`) | **29 pruebas, 99 verificaciones**: endpoints, comando `sync:locations`, validación de ubigeos, CORS integrado y las 4 rutas exactas del contrato |
+| Solo los ejemplos de Laravel (`ExampleTest`) | **34 pruebas, 116 verificaciones**: endpoints, comando `sync:locations`, validación de ubigeos, CORS integrado, las 4 rutas exactas del contrato, la portada sin versiones y `/up` |
 | Sin forma de comprobar los endpoints sin MySQL ni internet | Base SQLite en memoria; el servidor del MINEDU se simula con `Http::fake()` |
 | `tests/CreatesApplication.php` | Integrado en el framework (eliminado) |
 | PHPUnit 8/9 | PHPUnit 12, con atributos de PHP 8 (`#[DataProvider]`) |
@@ -222,7 +226,7 @@ La migración también fue la oportunidad de ordenar el código heredado sin cam
 
 | Característica | Dónde se usa | Para qué |
 |---|---|---|
-| **Constantes de clase con tipo** | `private const int COLEGIOS_POR_PAGINA = 500;` y `private const string ESCALE_URL` en `SyncLocations` | PHP garantiza que la constante siempre tenga ese tipo, también en clases hijas |
+| **Constantes de clase con tipo** | `private const int COLEGIOS_POR_PAGINA = 500;` y `private const string ESCALE_URL` en `SyncLocations`; `private const array CONSULTAS` en `InicioController` | PHP garantiza que la constante siempre tenga ese tipo, también en clases hijas |
 | **Atributo `#[\Override]`** | `AppServiceProvider::register()`, `UserFactory::definition()` y el `setUp()` de las pruebas | Si una actualización de Laravel elimina o renombra el método padre, PHP falla al cargar la clase en vez de ignorar el método en silencio |
 
 Prueba de que el código requiere PHP 8.3, ejecutada con el PHP 8.2 de XAMPP:
@@ -295,9 +299,11 @@ app/                                    app/
 │  └─ Kernel.php            ✗           ├─ Enums/NivelUbigeo.php  ★
 ├─ Exceptions/Handler.php   ✗           │
 ├─ Http/                                ├─ Http/
-│  ├─ Controllers/                      │  └─ Controllers/
-│  ├─ Kernel.php            ✗           │
-│  └─ Middleware/ (8)       ✗           │
+│  ├─ Controllers/                      │  ├─ Controllers/
+│  │  └─ LocationController.php         │  │  ├─ LocationController.php
+│  │                                    │  │  └─ InicioController.php       ★
+│  ├─ Kernel.php            ✗           │  └─ Middleware/
+│  └─ Middleware/ (8)       ✗           │     └─ OcultarVersionDePhp.php  ★
 ├─ Models/ (4)                          ├─ Models/ (4 + User)
 ├─ Providers/ (5)                       ├─ Providers/AppServiceProvider.php
 ├─ Region.php               ✗           │
@@ -310,8 +316,8 @@ index.php  server.php       ✗           public/            ★
 webpack.mix.js              ✗             ├─ index.php
 favicon.ico robots.txt      → public/     └─ .htaccess
                                         vite.config.js     ★
-tests/ (solo ejemplos)                  tests/ (29 pruebas: API, sync:locations
-                                               y validación de ubigeos)
+tests/ (solo ejemplos)                  tests/ (34 pruebas: API, sync:locations,
+                                               ubigeos y portada)
                                         .github/workflows/pruebas.yml  ★
 config/ (14 archivos)                   config/ (10 archivos)
 

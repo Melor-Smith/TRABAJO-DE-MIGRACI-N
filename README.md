@@ -110,7 +110,7 @@ php artisan sync:locations
 ```bash
 php artisan serve
 ```
-La aplicación quedará disponible en `http://127.0.0.1:8000`.
+La aplicación quedará disponible en `http://127.0.0.1:8000`. Al abrir esa dirección se ve la portada de la API: las 4 consultas con un ejemplo listo para abrir cada una (Huánuco), el límite de consultas y la ruta de monitoreo `/up`. Por seguridad, no muestra versiones de PHP ni de Laravel.
 
 ---
 
@@ -277,9 +277,10 @@ Las pruebas usan SQLite en memoria (no tocan tu base MySQL) y **no** llaman al s
 |---|---|
 | `tests/Feature/LocationApiTest.php` | Formato JSON y códigos 200/404 de los 4 endpoints, rechazo de códigos incompletos o con comodines (`%`, `_`), límite de 60 peticiones por minuto, flujo CORS de un navegador (preflight + consulta) y que `/api` publique exactamente las 4 rutas del contrato |
 | `tests/Feature/SyncLocationsCommandTest.php` | Sincronización completa, que volver a sincronizar no duplique registros, y el caso en que ESCALE devuelve un objeto en vez de una lista |
+| `tests/Feature/InicioTest.php` | Que la portada describa exactamente las rutas reales de la API, que no revele versiones del servidor y que `/up` responda |
 | `tests/Unit/NivelUbigeoTest.php` | Que los códigos de región (2 dígitos), provincia (4) y distrito (6) se validen correctamente |
 
-En total: **29 pruebas, 99 verificaciones**. Además, GitHub Actions (`.github/workflows/pruebas.yml`) las ejecuta en cada push con **PHP 8.3, 8.4 y 8.5** y revisa el formato del código con Pint (`vendor/bin/pint --test`).
+En total: **34 pruebas, 116 verificaciones**. Además, GitHub Actions (`.github/workflows/pruebas.yml`) las ejecuta en cada push con **PHP 8.3, 8.4 y 8.5** y revisa el formato del código con Pint (`vendor/bin/pint --test`).
 
 ---
 
@@ -295,7 +296,10 @@ brigesnote/
 │   ├── Enums/
 │   │   └── NivelUbigeo.php         # Niveles del ubigeo: región, provincia, distrito
 │   ├── Http/Controllers/
-│   │   └── LocationController.php  # Controlador de endpoints /api/
+│   │   ├── LocationController.php  # Controlador de endpoints /api/
+│   │   └── InicioController.php    # Portada de la API (/), sin versiones
+│   ├── Http/Middleware/
+│   │   └── OcultarVersionDePhp.php # Quita la cabecera X-Powered-By
 │   ├── Models/
 │   │   ├── District.php            # Modelo Distritos
 │   │   ├── Province.php            # Modelo Provincias
@@ -320,6 +324,7 @@ brigesnote/
 ├── .env.example                    # Plantilla de variables de entorno
 ├── PLAN_MIGRACION.md               # Plan y resultado de la migración a PHP 8.3
 ├── ARQUITECTURA.md                 # Cambios de arquitectura (antes vs. después)
+├── DECISIONES.md                   # Por qué de cada decisión (formato Y-statement)
 └── .gitignore                      # Reglas de exclusión para Git
 ```
 

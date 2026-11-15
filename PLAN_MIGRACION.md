@@ -110,6 +110,10 @@ Cada paso es un commit independiente, para poder revisarlo o revertirlo por sepa
 | 13 | `style: formatear el código con Laravel Pint` | Formato uniforme (estilo de Laravel, basado en PSR-12) |
 | 14 | `ci: probar el proyecto en PHP 8.3, 8.4 y 8.5` | GitHub Actions en cada push |
 | 15 | `docs: compatibilidad con PHP 8.3+ y conclusión de arquitectura` | `ARQUITECTURA.md`, `README.md` y este plan |
+| 16 | `test: comprobar CORS integrado y las 4 rutas exactas del contrato` | Flujo CORS de un navegador y lista exacta de rutas |
+| 17 | `fix(sync): no consultar sin fin si ESCALE repite una página` | Detección de página repetida y tope de 100 páginas |
+| 18 | `feat: portada de la API sin exponer versiones del servidor` | `InicioController` y middleware `OcultarVersionDePhp` |
+| 19 | `docs: registro de decisiones de arquitectura` | `DECISIONES.md` (8 decisiones en formato Y-statement) |
 
 ## 7. Criterios de aceptación
 
