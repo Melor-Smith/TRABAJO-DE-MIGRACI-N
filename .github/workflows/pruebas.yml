@@ -1,0 +1,62 @@
+# Comprueba en cada push que el proyecto funciona en PHP 8.3 y en las
+# versiones superiores, y que el código respeta el formato de Pint.
+
+name: Pruebas
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pruebas:
+    name: PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3', '8.4', '8.5']
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, intl, pdo_sqlite, sqlite3
+          coverage: none
+
+      - name: Preparar el archivo .env
+        run: cp .env.example .env
+
+      - name: Instalar dependencias desde composer.lock
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Generar APP_KEY
+        run: php artisan key:generate
+
+      - name: Ejecutar las pruebas (SQLite en memoria, MINEDU simulado)
+        run: php artisan test
+
+  formato:
+    name: Formato (Pint)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Instalar dependencias
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Revisar el formato
+        run: vendor/bin/pint --test
