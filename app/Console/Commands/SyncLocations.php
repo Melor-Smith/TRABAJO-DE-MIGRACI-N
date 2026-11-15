@@ -145,55 +145,65 @@ class SyncLocations extends Command
         $this->info("Distritos para la provincia $provinceId sincronizados correctamente.");
     }
 
+    /**
+     * Colegios por página. ESCALE devuelve solo 50 si no se envía "max",
+     * por lo que los distritos con más colegios quedaban incompletos.
+     */
+    private const SCHOOLS_PAGE_SIZE = 500;
+
     private function syncSchools($districtId)
     {
         $this->info("Sincronizando escuelas para el distrito $districtId...");
-        $response = Http::withHeaders([
-            'Accept' => 'application/json', // Especifica que la respuesta esperada es JSON
-        ])->get('https://escale.minedu.gob.pe/padron/rest/instituciones', [
-            'estados' => 1,
-            'ubigeo' => $districtId,
-        ]);
+        $start = 0;
 
-        if ($response->failed()) {
-            $this->error("Error al obtener escuelas para el distrito $districtId");
-            return;
-        }
-        if(!isset($response->json()['items'])){
-            $this->error("No se encontraron registros de escuelas");
-            return;
-        }
-        $schools = $response->json()['items'];
-        if(isset($schools['codMod'])){
-            School::updateOrCreate(
-                ['codMod' => $schools['codMod']],
-                [
-                    'idDistrito' => $districtId,
-                    'nombreCenEdu' => $schools['cenEdu']?? null,
-                    'cenPob' => $schools['cenPob']?? null,
-                    'dirCen' => $schools['dirCen']?? null,
-                    'director' => $schools['director'] ?? null,
-                    'dis_crecer' => $schools['dis_crecer'] ?? null,
-                    'dis_juntos' => $schools['dis_juntos'] ?? null,
-                ]
-            );
-        }else{
+        do {
+            $response = Http::withHeaders([
+                'Accept' => 'application/json', // Especifica que la respuesta esperada es JSON
+            ])->get('https://escale.minedu.gob.pe/padron/rest/instituciones', [
+                'estados' => 1,
+                'ubigeo' => $districtId,
+                'start' => $start,
+                'max' => self::SCHOOLS_PAGE_SIZE,
+            ]);
+
+            if ($response->failed()) {
+                $this->error("Error al obtener escuelas para el distrito $districtId");
+                return;
+            }
+
+            // Sin "items": el distrito no tiene colegios o ya se leyó la última página
+            $schools = $response->json('items');
+            if ($schools === null) {
+                if ($start === 0) {
+                    $this->error("No se encontraron registros de escuelas");
+                    return;
+                }
+                break;
+            }
+
+            // ESCALE devuelve un objeto (no una lista) cuando la página tiene un solo colegio
+            if (isset($schools['codMod'])) {
+                $schools = [$schools];
+            }
+
             foreach ($schools as $school) {
                 School::updateOrCreate(
                     ['codMod' => $school['codMod']],
                     [
                         'idDistrito' => $districtId,
-                        'nombreCenEdu' => $school['cenEdu'],
-                        'cenPob' => $school['cenPob'],
-                        'dirCen' => $school['dirCen'],
+                        'nombreCenEdu' => $school['cenEdu'] ?? null,
+                        'cenPob' => $school['cenPob'] ?? null,
+                        'dirCen' => $school['dirCen'] ?? null,
                         'director' => $school['director'] ?? null,
                         'dis_crecer' => $school['dis_crecer'] ?? null,
                         'dis_juntos' => $school['dis_juntos'] ?? null,
                     ]
                 );
             }
-        }
 
-        $this->info("Escuelas para el distrito $districtId sincronizadas correctamente.");
+            $start += count($schools);
+        } while (count($schools) === self::SCHOOLS_PAGE_SIZE);
+
+        $this->info("Escuelas para el distrito $districtId sincronizadas correctamente ($start).");
     }
 }
