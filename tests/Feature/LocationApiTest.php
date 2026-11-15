@@ -66,6 +66,21 @@ class LocationApiTest extends TestCase
             ]);
     }
 
+    public function test_codigo_de_region_incompleto_o_con_comodines_devuelve_404(): void
+    {
+        // "1" no debe devolver las provincias de las regiones 10 a 19
+        $this->getJson('/api/provincias/1')->assertNotFound();
+        $this->getJson('/api/provincias/1_')->assertNotFound();
+        $this->getJson('/api/provincias/'.rawurlencode('%'))->assertNotFound();
+    }
+
+    public function test_codigo_de_provincia_incompleto_o_con_comodines_devuelve_404(): void
+    {
+        $this->getJson('/api/distritos/15')->assertNotFound();
+        $this->getJson('/api/distritos/150_')->assertNotFound();
+        $this->getJson('/api/distritos/'.rawurlencode('15%'))->assertNotFound();
+    }
+
     public function test_lista_distritos_de_una_provincia(): void
     {
         $response = $this->getJson('/api/distritos/1501')

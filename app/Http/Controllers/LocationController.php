@@ -21,11 +21,13 @@ class LocationController extends Controller
         ]);
     }
 
-    // Obtener provincias de una región (según los dos primeros caracteres de idDistrito)
+    // Obtener provincias de una región (los 2 primeros dígitos de idProvincia son el idRegion)
     public function getProvinces($idRegion)
     {
-        // Filtrar provincias cuyo idDistrito comienza con los mismos caracteres de idRegion
-        $provinces = Province::whereRaw('LEFT(idProvincia, 2) = ?', [$idRegion])->get();
+        // Solo se aceptan 2 dígitos, para que "%" o "_" no actúen como comodines en el LIKE
+        $provinces = preg_match('/^\d{2}$/', $idRegion)
+            ? Province::where('idProvincia', 'like', $idRegion.'%')->get()
+            : collect();
 
         if ($provinces->isEmpty()) {
             return response()->json([
@@ -40,11 +42,13 @@ class LocationController extends Controller
         ]);
     }
 
-    // Obtener distritos de una provincia (según los cuatro primeros caracteres de idDistrito)
+    // Obtener distritos de una provincia (los 4 primeros dígitos de idDistrito son el idProvincia)
     public function getDistricts($idProvince)
     {
-        // Filtrar distritos cuyo idDistrito comienza con los mismos caracteres de idProvincia
-        $districts = District::whereRaw('LEFT(idDistrito, 4) = ?', [$idProvince])->get();
+        // Solo se aceptan 4 dígitos, para que "%" o "_" no actúen como comodines en el LIKE
+        $districts = preg_match('/^\d{4}$/', $idProvince)
+            ? District::where('idDistrito', 'like', $idProvince.'%')->get()
+            : collect();
 
         if ($districts->isEmpty()) {
             return response()->json([
