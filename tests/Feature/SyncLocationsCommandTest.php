@@ -23,6 +23,7 @@ class SyncLocationsCommandTest extends TestCase
     /** Intentos recibidos por distrito, para simular cortes de conexión. */
     private array $intentos = [];
 
+    #[\Override]
     protected function setUp(): void
     {
         parent::setUp();
