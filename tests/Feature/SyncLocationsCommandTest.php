@@ -23,6 +23,9 @@ class SyncLocationsCommandTest extends TestCase
     /** Intentos recibidos por distrito, para simular cortes de conexión. */
     private array $intentos = [];
 
+    /** Simula una falla de ESCALE: ignora "start" y repite siempre la primera página. */
+    private bool $escaleIgnoraStart = false;
+
     #[\Override]
     protected function setUp(): void
     {
@@ -111,7 +114,7 @@ class SyncLocationsCommandTest extends TestCase
             // Igual que ESCALE: 50 colegios por defecto, paginación con start/max
             $pagina = array_slice(
                 $colegiosPorDistrito[$query['ubigeo']],
-                (int) ($query['start'] ?? 0),
+                $this->escaleIgnoraStart ? 0 : (int) ($query['start'] ?? 0),
                 (int) ($query['max'] ?? 50)
             );
 
@@ -188,6 +191,25 @@ class SyncLocationsCommandTest extends TestCase
         // ...y 100101 se intenta 3 veces antes de pasar al siguiente distrito.
         $this->assertSame(3, $this->intentos['100101']);
         $this->assertSame(0, School::where('idDistrito', '100101')->count());
+    }
+
+    public function test_si_escale_repite_la_misma_pagina_no_consulta_sin_fin(): void
+    {
+        $this->escaleIgnoraStart = true;
+
+        $this->artisan('sync:locations')
+            ->expectsOutputToContain('Distrito 150101: ESCALE repitió la misma página de colegios')
+            ->assertExitCode(0);
+
+        // Solo 2 consultas al distrito: la primera página y la repetida que la delata
+        $consultas = collect(Http::recorded())
+            ->filter(fn ($registro) => str_contains($registro[0]->url(), 'ubigeo=150101'))
+            ->count();
+        $this->assertSame(2, $consultas);
+
+        // Se conserva lo descargado y la sincronización sigue con los demás distritos
+        $this->assertSame(500, School::where('idDistrito', '150101')->count());
+        $this->assertSame('150102', School::find('0900001')?->idDistrito);
     }
 
     public function test_volver_a_sincronizar_no_duplica_registros(): void

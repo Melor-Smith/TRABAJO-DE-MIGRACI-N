@@ -25,6 +25,12 @@ class SyncLocations extends Command
     /** Colegios por consulta. Si no se envía "max", ESCALE devuelve solo 50. */
     private const int COLEGIOS_POR_PAGINA = 500;
 
+    /**
+     * Último respaldo contra una paginación sin fin: 100 páginas de 500 son
+     * 50 000 colegios, muy por encima del distrito más grande del Perú.
+     */
+    private const int MAXIMO_PAGINAS_POR_DISTRITO = 100;
+
     /** El MINEDU corta conexiones de forma intermitente (cURL error 56). */
     private const int INTENTOS = 3;
 
@@ -161,13 +167,25 @@ class SyncLocations extends Command
     /**
      * Descarga los colegios activos del distrito página por página, hasta
      * recibir una página incompleta (la última).
+     *
+     * Dos protecciones evitan que el comando quede consultando sin fin:
+     * si ESCALE devuelve otra vez la misma página (por ejemplo, porque dejó
+     * de respetar "start"), se detiene; y nunca pasa de MAXIMO_PAGINAS_POR_DISTRITO.
      */
     private function syncSchools(string $idDistrito): void
     {
         $this->info("Sincronizando escuelas para el distrito $idDistrito...");
         $guardados = 0;
+        $paginas = 0;
+        $inicioPaginaAnterior = null;
 
         do {
+            if (++$paginas > self::MAXIMO_PAGINAS_POR_DISTRITO) {
+                $this->error("Distrito $idDistrito: se alcanzó el tope de ".self::MAXIMO_PAGINAS_POR_DISTRITO.' páginas; se continúa con el siguiente.');
+
+                return;
+            }
+
             $response = $this->escale('instituciones', [
                 'estados' => 1,
                 'ubigeo' => $idDistrito,
@@ -189,6 +207,16 @@ class SyncLocations extends Command
 
                 return;
             }
+
+            // Una página nueva siempre empieza con otro colegio. Si empieza con
+            // el mismo que la anterior, ESCALE está repitiendo la misma página.
+            $inicioPagina = $pagina[0]['codMod'] ?? null;
+            if ($inicioPagina !== null && $inicioPagina === $inicioPaginaAnterior) {
+                $this->error("Distrito $idDistrito: ESCALE repitió la misma página de colegios; se detiene la paginación con $guardados guardados.");
+
+                return;
+            }
+            $inicioPaginaAnterior = $inicioPagina;
 
             foreach ($pagina as $colegio) {
                 $this->guardarColegio($colegio, $idDistrito);
