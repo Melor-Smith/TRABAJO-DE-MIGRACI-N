@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\OcultarVersionDePhp;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -16,6 +17,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // Límite de 60 peticiones por minuto en /api (definido en AppServiceProvider),
         // equivalente al 'throttle:60,1' del grupo api en Laravel 7.
         $middleware->throttleApi();
+
+        // No anunciar la versión de PHP en las cabeceras de respuesta.
+        $middleware->append(OcultarVersionDePhp::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
