@@ -308,6 +308,7 @@ brigesnote/
 ├── tests/Feature/                  # Pruebas de la API y de la sincronización
 ├── .env.example                    # Plantilla de variables de entorno
 ├── PLAN_MIGRACION.md               # Plan y resultado de la migración a PHP 8.3
+├── ARQUITECTURA.md                 # Cambios de arquitectura (antes vs. después)
 └── .gitignore                      # Reglas de exclusión para Git
 ```
 
@@ -328,6 +329,8 @@ El proyecto original funcionaba solo con PHP 7.4 / 8.0 (Laravel 7.30.7). Se migr
 | Pruebas automatizadas | Garantizan que la API responde igual que antes |
 
 La API conserva **exactamente** las mismas rutas y el mismo formato de respuesta.
+
+El análisis completo de cómo cambió la arquitectura (recorrido de una petición, capas, estructura de carpetas y características de PHP 8 usadas) está en [`ARQUITECTURA.md`](ARQUITECTURA.md).
 
 ---
 

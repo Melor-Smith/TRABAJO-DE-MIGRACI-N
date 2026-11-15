@@ -105,6 +105,7 @@ Cada paso es un commit independiente, para poder revisarlo o revertirlo por sepa
 | 8 | `docs: registrar el resultado de la migración` | Esta sección 9 |
 | 9 | `fix: reintentar cuando el MINEDU corta la conexión` | Reintentos en `sync:locations` (agregado durante la verificación, ver sección 9) |
 | 10 | Push | Rama `main` del repositorio de entrega |
+| 11 | `docs: documentar los cambios de arquitectura` | `ARQUITECTURA.md`: comparación antes/después, como caso de estudio |
 
 ## 7. Criterios de aceptación
 
