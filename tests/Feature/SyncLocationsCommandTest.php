@@ -9,6 +9,7 @@ use App\Models\School;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use Tests\TestCase;
 
 /**
@@ -19,9 +20,15 @@ class SyncLocationsCommandTest extends TestCase
 {
     use RefreshDatabase;
 
+    /** Intentos recibidos por distrito, para simular cortes de conexión. */
+    private array $intentos = [];
+
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Los reintentos no esperan de verdad durante las pruebas.
+        Sleep::fake();
 
         Http::fake(function (Request $request) {
             return $this->respuestaEscale($request);
@@ -66,6 +73,7 @@ class SyncLocationsCommandTest extends TestCase
                 '1502' => ['idDistrito' => '150201', 'nombreDistrito' => 'BARRANCA'],
                 '1001' => [
                     ['idDistrito' => '100101', 'nombreDistrito' => 'HUANUCO'],
+                    ['idDistrito' => '100102', 'nombreDistrito' => 'AMARILIS'],
                 ],
             ];
 
@@ -73,6 +81,14 @@ class SyncLocationsCommandTest extends TestCase
         }
 
         if (strpos($url, '/padron/rest/instituciones') !== false) {
+            $ubigeo = $query['ubigeo'];
+            $this->intentos[$ubigeo] = ($this->intentos[$ubigeo] ?? 0) + 1;
+
+            // El MINEDU corta la conexión siempre en 100101 y solo la primera vez en 100102.
+            if ($ubigeo === '100101' || ($ubigeo === '100102' && $this->intentos[$ubigeo] === 1)) {
+                return Http::failedConnection('cURL error 56: Recv failure: Connection was reset')($request);
+            }
+
             $colegiosPorDistrito = [
                 // 501 colegios: obliga a leer una página de 500 y otra de 1 (objeto)
                 '150101' => $this->colegios(501),
@@ -81,6 +97,9 @@ class SyncLocationsCommandTest extends TestCase
                 ],
                 // Distrito sin instituciones
                 '150201' => [],
+                '100102' => [
+                    ['codMod' => '0800001', 'cenEdu' => 'COLEGIO AMARILIS', 'cenPob' => 'AMARILIS', 'dirCen' => 'JR. HUALLAGA 10'],
+                ],
             ];
 
             if (! array_key_exists($query['ubigeo'], $colegiosPorDistrito)) {
@@ -129,8 +148,8 @@ class SyncLocationsCommandTest extends TestCase
 
         $this->assertSame(2, Region::count());
         $this->assertSame(3, Province::count());
-        $this->assertSame(4, District::count());
-        $this->assertSame(502, School::count());
+        $this->assertSame(5, District::count());
+        $this->assertSame(503, School::count());
 
         $colegio = School::find('0000001');
         $this->assertSame('150101', $colegio->idDistrito);
@@ -154,6 +173,22 @@ class SyncLocationsCommandTest extends TestCase
         });
     }
 
+    public function test_un_corte_de_conexion_no_detiene_la_sincronizacion(): void
+    {
+        // 100101 falla en todos los intentos; 100102 falla una vez y luego responde.
+        $this->artisan('sync:locations')
+            ->expectsOutputToContain('Sin conexión con ESCALE (instituciones)')
+            ->assertExitCode(0);
+
+        // El reintento recupera el colegio de 100102...
+        $this->assertSame('100102', School::find('0800001')?->idDistrito);
+        $this->assertSame(2, $this->intentos['100102']);
+
+        // ...y 100101 se intenta 3 veces antes de pasar al siguiente distrito.
+        $this->assertSame(3, $this->intentos['100101']);
+        $this->assertSame(0, School::where('idDistrito', '100101')->count());
+    }
+
     public function test_volver_a_sincronizar_no_duplica_registros(): void
     {
         $this->artisan('sync:locations')->assertExitCode(0);
@@ -161,8 +196,8 @@ class SyncLocationsCommandTest extends TestCase
 
         $this->assertSame(2, Region::count());
         $this->assertSame(3, Province::count());
-        $this->assertSame(4, District::count());
-        $this->assertSame(502, School::count());
+        $this->assertSame(5, District::count());
+        $this->assertSame(503, School::count());
     }
 
     public function test_consulta_los_endpoints_oficiales_de_escale(): void

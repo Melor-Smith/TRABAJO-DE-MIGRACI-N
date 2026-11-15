@@ -3,6 +3,8 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use App\Models\Region;
 use App\Models\Province;
@@ -30,14 +32,36 @@ class SyncLocations extends Command
         return 0;
     }
 
+    /**
+     * Consulta la API REST de ESCALE (MINEDU).
+     *
+     * El servidor del MINEDU a veces corta la conexión (cURL error 56) o tarda en
+     * responder. Cada consulta se reintenta 3 veces, esperando 2 s entre intentos;
+     * si aún falla, devuelve null para que la sincronización continúe con el
+     * siguiente elemento en lugar de detenerse.
+     */
+    private function escale(string $recurso, array $parametros = []): ?Response
+    {
+        try {
+            return Http::withHeaders([
+                'Accept' => 'application/json', // Especifica que la respuesta esperada es JSON
+            ])
+                ->timeout(60)
+                ->retry(3, 2000, throw: false)
+                ->get('https://escale.minedu.gob.pe/padron/rest/'.$recurso, $parametros);
+        } catch (ConnectionException $e) {
+            $this->error("Sin conexión con ESCALE ($recurso): ".$e->getMessage());
+
+            return null;
+        }
+    }
+
     private function syncRegions()
     {
         $this->info('Sincronizando regiones...');
-        $response = Http::withHeaders([
-            'Accept' => 'application/json', // Especifica que la respuesta esperada es JSON
-        ])->get('https://escale.minedu.gob.pe/padron/rest/regiones');
+        $response = $this->escale('regiones');
 
-        if ($response->failed()) {
+        if (! $response || $response->failed()) {
             $this->error('Error al obtener regiones');
             return;
         }
@@ -64,13 +88,11 @@ class SyncLocations extends Command
     private function syncProvinces($regionId)
     {
         $this->info("Sincronizando provincias para la región $regionId...");
-        $response = Http::withHeaders([
-            'Accept' => 'application/json', // Especifica que la respuesta esperada es JSON
-        ])->get('https://escale.minedu.gob.pe/padron/rest/provincias', [
+        $response = $this->escale('provincias', [
             'idRegion' => $regionId,
         ]);
 
-        if ($response->failed()) {
+        if (! $response || $response->failed()) {
             $this->error("Error al obtener provincias para la región $regionId");
             return;
         }
@@ -107,13 +129,11 @@ class SyncLocations extends Command
     private function syncDistricts($provinceId)
     {
         $this->info("Sincronizando distritos para la provincia $provinceId...");
-        $response = Http::withHeaders([
-            'Accept' => 'application/json', // Especifica que la respuesta esperada es JSON
-        ])->get('https://escale.minedu.gob.pe/padron/rest/distritos', [
+        $response = $this->escale('distritos', [
             'idProvincia' => $provinceId,
         ]);
 
-        if ($response->failed()) {
+        if (! $response || $response->failed()) {
             $this->error("Error al obtener distritos para la provincia $provinceId");
             return;
         }
@@ -157,16 +177,14 @@ class SyncLocations extends Command
         $start = 0;
 
         do {
-            $response = Http::withHeaders([
-                'Accept' => 'application/json', // Especifica que la respuesta esperada es JSON
-            ])->get('https://escale.minedu.gob.pe/padron/rest/instituciones', [
+            $response = $this->escale('instituciones', [
                 'estados' => 1,
                 'ubigeo' => $districtId,
                 'start' => $start,
                 'max' => self::SCHOOLS_PAGE_SIZE,
             ]);
 
-            if ($response->failed()) {
+            if (! $response || $response->failed()) {
                 $this->error("Error al obtener escuelas para el distrito $districtId");
                 return;
             }

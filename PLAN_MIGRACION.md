@@ -102,14 +102,16 @@ Cada paso es un commit independiente, para poder revisarlo o revertirlo por sepa
 | 5 | `security: mover el punto de entrada a public/` | `.env` fuera del alcance del navegador |
 | 6 | `docs: actualizar README y .env.example` | Requisitos de PHP 8.3, base `escalebridge` |
 | 7 | `fix: descargar todos los colegios de cada distrito` | Paginación de la API de ESCALE (agregado durante la verificación, ver sección 9) |
-| 8 | Push | Rama `main` del repositorio de entrega |
+| 8 | `docs: registrar el resultado de la migración` | Esta sección 9 |
+| 9 | `fix: reintentar cuando el MINEDU corta la conexión` | Reintentos en `sync:locations` (agregado durante la verificación, ver sección 9) |
+| 10 | Push | Rama `main` del repositorio de entrega |
 
 ## 7. Criterios de aceptación
 
 - [x] `php -v` muestra PHP 8.3.x. → **PHP 8.3.36 (ZTS x64)**
 - [x] `composer install` termina sin errores. → **Laravel 13.42.0, sin avisos de seguridad**
 - [x] `php artisan migrate` crea las tablas `regions`, `provinces`, `districts` y `schools`. → **MariaDB 10.4.32 (XAMPP)**
-- [x] `php artisan test` pasa todas las pruebas. → **16 pruebas, 72 verificaciones**
+- [x] `php artisan test` pasa todas las pruebas. → **17 pruebas, 78 verificaciones**
 - [x] Los 4 endpoints (`/api/regiones`, `/api/provincias/{id}`, `/api/distritos/{id}`, `/api/colegios/{ubigeo}`) devuelven el mismo formato JSON documentado en el README. → **Probados con datos reales en MySQL**
 - [x] `php artisan sync:locations` descarga datos reales del MINEDU sin errores.
 - [x] El archivo `.env` no es accesible desde el navegador. → **`/.env` responde 404**
@@ -135,7 +137,7 @@ La migración se completó y verificó. La API conserva las mismas rutas y el mi
 | PHP recién instalado no verifica HTTPS (`cURL error 60`) por falta de certificados raíz | Entorno | Configurado `curl.cainfo` / `openssl.cafile` en `php.ini`; documentado en el README. **No** se desactivó la verificación SSL |
 | `.env` de Laravel 7 usa `CACHE_DRIVER` y `BROADCAST_DRIVER` | Entorno | Renombrados a `CACHE_STORE` y `BROADCAST_CONNECTION`; documentado en el README |
 | Un colegio con anexo (mismo código modular, `anexo = 1`) sobrescribe al principal, porque la llave de `schools` es solo `codMod` | Diseño original | **Pendiente**: requiere una llave compuesta `codMod + anexo`, lo que cambia el formato de la API |
-| Si el servidor del MINEDU no responde (error de red), `sync:locations` se detiene en lugar de continuar con el siguiente distrito | Código original | **Pendiente**: agregar reintentos y tiempo de espera |
+| El servidor del MINEDU corta conexiones de forma intermitente (`cURL error 56`), y `sync:locations` se detenía por completo en el primer corte | Código original | **Corregido** (commit 9): 3 reintentos con 2 s de espera, tiempo máximo de 60 s y, si aún falla, continúa con el siguiente elemento |
 
 ### Comandos de verificación
 
@@ -143,7 +145,7 @@ La migración se completó y verificó. La API conserva las mismas rutas y el mi
 php -v                       # PHP 8.3.36
 composer install
 php artisan migrate
-php artisan test             # 16 passed (72 assertions)
+php artisan test             # 17 passed (78 assertions)
 php artisan sync:locations
 php artisan serve            # http://127.0.0.1:8000/api/regiones
 ```
