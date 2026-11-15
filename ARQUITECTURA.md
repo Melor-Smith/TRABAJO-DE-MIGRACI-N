@@ -16,7 +16,8 @@ Para migrar a PHP 8.3 no bastaba con cambiar la versión de PHP. **Laravel 7 no 
 |---|---|---|
 | PHP | 7.2.5 – 8.0 | 8.3 |
 | Laravel | 7.30.7 (sin soporte desde 2021) | 13.42.0 |
-| Archivos PHP en `app/` | 25 | 9 |
+| Archivos PHP en `app/` | 25 | 10 |
+| Versiones de PHP comprobadas | — | 8.3, 8.4 y 8.5 (GitHub Actions) |
 
 ---
 
@@ -78,7 +79,8 @@ public/.htaccess  ──►  public/index.php   (el .env queda fuera del alcance
                           │
                           ▼
                     LocationController@getProvinces
-                    valida '^\d{2}$' + where('idProvincia', 'like', '10%')
+                    NivelUbigeo::Region->admite('10')       ← enum (PHP 8.1)
+                    + where('idProvincia', 'like', '10%')
                           │
                           ▼
                  MySQL / MariaDB  (o SQLite en las pruebas)
@@ -108,6 +110,7 @@ public/.htaccess  ──►  public/index.php   (el .env queda fuera del alcance
 | `app/Console/Kernel.php` | **Eliminado** → los comandos de `app/Console/Commands` se registran solos; `routes/console.php` |
 | `app/Exceptions/Handler.php` | **Eliminado** → `withExceptions()`; se agregó que toda ruta `/api/*` responda errores en JSON |
 | Los providers se listaban en `config/app.php` | `bootstrap/providers.php` |
+| `config/cors.php`, `config/broadcasting.php`, `config/hashing.php` y `config/view.php` | **Eliminados**: sus valores por defecto ahora vienen dentro del framework. Si alguna vez hace falta cambiarlos, se recuperan con `php artisan config:publish` |
 
 ### 3.3 Middleware
 
@@ -147,7 +150,7 @@ Resultado: **la carpeta `app/Http/Middleware` desaparece** (8 archivos menos) y 
 | Migraciones como clases con nombre (`class CreateSchoolsTable`), una protegida con `if (!class_exists(...))` | Migraciones como **clases anónimas** (`return new class extends Migration`) | Evita choques de nombres; el `class_exists` ya no es necesario |
 | `database/seeds/` sin namespace | `database/seeders/` con namespace `Database\Seeders` | Carga automática con PSR-4 |
 | `UserFactory` como función `$factory->define()` | Clase `UserFactory extends Factory` | Formato de factories desde Laravel 8 |
-| `whereRaw('LEFT(idProvincia, 2) = ?')` | `where('idProvincia', 'like', '10%')` con validación previa del formato | `LEFT()` solo existe en MySQL; `LIKE` funciona en cualquier motor, aprovecha el índice de la llave primaria y permite pruebas con SQLite |
+| `whereRaw('LEFT(idProvincia, 2) = ?')` | `where('idProvincia', 'like', '10%')`, después de validar el código con el enum `NivelUbigeo` | `LEFT()` solo existe en MySQL; `LIKE` funciona en cualquier motor, aprovecha el índice de la llave primaria y permite pruebas con SQLite. La validación evita que `%` o `_` funcionen como comodines |
 
 Los modelos `Region`, `Province`, `District` y `School` **no cambiaron**.
 
@@ -160,6 +163,7 @@ La migración no cambiaba esta parte, pero al probarla con datos reales aparecie
 | Una sola consulta por distrito: ESCALE devuelve **máximo 50 colegios** si no se indica `max`, por lo que los distritos grandes quedaban incompletos | Paginación con `start`/`max` (páginas de 500) |
 | Un corte de conexión del MINEDU (`cURL error 56`) lanzaba una excepción y **detenía toda la sincronización** | Método `escale()` centralizado: tiempo máximo de 60 s, 3 reintentos con 2 s de espera y, si aún falla, se registra el error y continúa con el siguiente distrito |
 | La URL de ESCALE se repetía en 4 métodos | Una sola función (`escale()`) arma todas las consultas |
+| Números sueltos en el código y el caso "objeto o lista" de ESCALE repetido en cada método | Constantes con nombre (`COLEGIOS_POR_PAGINA`, `INTENTOS`…) y una sola función `comoLista()` |
 
 Resultado verificado: sincronización completa del país sin errores: **25 regiones, 196 provincias, 1,892 distritos y 115,086 colegios**.
 
@@ -176,10 +180,22 @@ La API no usa vistas: solo `welcome.blade.php` en `/`. Este cambio sigue el est�
 
 | Antes | Después |
 |---|---|
-| Solo los ejemplos de Laravel (`ExampleTest`) | **17 pruebas, 78 verificaciones** |
+| Solo los ejemplos de Laravel (`ExampleTest`) | **27 pruebas, 88 verificaciones**: endpoints, comando `sync:locations` y validación de ubigeos |
 | Sin forma de comprobar los endpoints sin MySQL ni internet | Base SQLite en memoria; el servidor del MINEDU se simula con `Http::fake()` |
 | `tests/CreatesApplication.php` | Integrado en el framework (eliminado) |
-| PHPUnit 8/9 | PHPUnit 12 |
+| PHPUnit 8/9 | PHPUnit 12, con atributos de PHP 8 (`#[DataProvider]`) |
+| Las pruebas se corrían solo a mano | **Integración continua**: GitHub Actions las ejecuta en cada push con PHP 8.3, 8.4 y 8.5 y revisa el formato con Pint |
+
+### 3.10 Diseño del código propio
+
+La migración también fue la oportunidad de ordenar el código heredado sin cambiar su comportamiento:
+
+| Antes | Después |
+|---|---|
+| Cada método del controlador repetía el mismo bloque `if ($x->isEmpty()) { 404 } return success` | Un solo método `responder()` arma las respuestas; `dependientesDe()` resuelve "provincias de una región" y "distritos de una provincia" con la misma lógica |
+| La regla "un código de región tiene 2 dígitos, de provincia 4, de distrito 6" no existía en el código | Enum `App\Enums\NivelUbigeo` con los tres niveles del ubigeo del INEI y su método `admite()`. La regla vive en un solo lugar y tiene sus propias pruebas |
+| Métodos sin tipos de parámetros ni de retorno | Tipos en todos los métodos propios y `declare(strict_types=1)`: PHP rechaza un tipo incorrecto en vez de convertirlo en silencio |
+| Estilo mixto (`for ($i=0;$i<count($x);$i++)`, imports sin usar) | `foreach` y formato uniforme con **Laravel Pint** (estilo de Laravel, basado en PSR-12) |
 
 ---
 
@@ -202,18 +218,59 @@ La API no usa vistas: solo `welcome.blade.php` en `/`. Este cambio sigue el est�
 
 ## 5. Características de PHP 8 aprovechadas en el código
 
+### Exclusivas de PHP 8.3
+
+| Característica | Dónde se usa | Para qué |
+|---|---|---|
+| **Constantes de clase con tipo** | `private const int COLEGIOS_POR_PAGINA = 500;` y `private const string ESCALE_URL` en `SyncLocations` | PHP garantiza que la constante siempre tenga ese tipo, también en clases hijas |
+| **Atributo `#[\Override]`** | `AppServiceProvider::register()`, `UserFactory::definition()` y el `setUp()` de las pruebas | Si una actualización de Laravel elimina o renombra el método padre, PHP falla al cargar la clase en vez de ignorar el método en silencio |
+
+Prueba de que el código requiere PHP 8.3, ejecutada con el PHP 8.2 de XAMPP:
+
+```
+> php -l app/Console/Commands/SyncLocations.php      (PHP 8.2.12)
+PHP Parse error:  syntax error, unexpected identifier "ESCALE_URL", expecting "="
+```
+
+### De PHP 8.0 a 8.2
+
 | Característica | Versión | Dónde se usa |
 |---|---|---|
-| Argumentos con nombre | 8.0 | `retry(3, 2000, throw: false)` en `SyncLocations`; `Application::configure(basePath: ...)` |
-| Operador nullsafe `?->` | 8.0 | `$request->user()?->id` en `AppServiceProvider` |
-| Tipos de retorno `void` y `?Response` | 7.1 / 8.0 | `escale(): ?Response`, `boot(): void` |
-| Propiedades tipadas | 7.4 | `private array $intentos` en las pruebas |
-| Funciones flecha `fn` | 7.4 | `withExceptions()` en `bootstrap/app.php` |
-| Constantes de clase privadas | 7.1 | `private const SCHOOLS_PAGE_SIZE` |
+| Enumeraciones (`enum`) con valor | 8.1 | `NivelUbigeo: int` (2, 4 y 6 dígitos) |
+| Argumentos con nombre | 8.0 | `retry(..., throw: false)` en `SyncLocations`; `Application::configure(basePath: ...)` |
+| Operador nullsafe `?->` | 8.0 | `$response?->successful()` cuando ESCALE no responde; `$request->user()?->id` |
+| Atributos | 8.0 | `#[DataProvider]` en `NivelUbigeoTest`, `#[\Override]` |
+| Tipo de retorno `?Response` | 8.0 | `escale(): ?Response` |
+| Coma final en las listas de argumentos | 8.0 | Llamadas a `responder()` en el controlador |
+
+### Además
+
+`declare(strict_types=1)` en el código propio (controlador, comando, enum y provider): PHP lanza un error si un método recibe un tipo distinto del declarado, en lugar de convertirlo automáticamente.
 
 ---
 
-## 6. Lo que NO cambió (contrato de la API)
+## 6. Compatibilidad: PHP 8.3 o superior
+
+El proyecto **no queda limitado a PHP 8.3**. En `composer.json` hay dos configuraciones con funciones distintas:
+
+| Configuración | Valor | Qué controla |
+|---|---|---|
+| `require.php` | `^8.3` | Versiones de PHP en las que **corre** el proyecto: 8.3, 8.4 y 8.5 |
+| `config.platform.php` | `8.3.0` | Le indica a Composer que elija versiones de librerías que funcionen **desde** PHP 8.3 al generar `composer.lock` |
+
+**Por qué se fija la plataforma.** Sin esa configuración, Composer arma `composer.lock` según el PHP de la computadora del programador. Si esa computadora tiene PHP 8.5, puede elegir librerías que exigen PHP 8.4 o superior, como Symfony 8.1. El proyecto diría "funciona desde 8.3", pero `composer install` fallaría en un servidor con PHP 8.3. Al fijar la plataforma en la versión **mínima** admitida, el `composer.lock` sirve para todas las versiones del rango:
+
+| | PHP 8.2 | PHP 8.3 | PHP 8.4 | PHP 8.5 |
+|---|---|---|---|---|
+| Este proyecto | ❌ (no admitido, a propósito) | ✅ | ✅ | ✅ |
+
+**Cómo se comprueba.** El flujo `.github/workflows/pruebas.yml` instala exactamente las versiones de `composer.lock` y ejecuta las pruebas en PHP 8.3, 8.4 y 8.5 en cada push. El resultado se ve en la pestaña *Actions* del repositorio.
+
+**Para pasar a una versión futura**, por ejemplo PHP 9, basta con agregarla a la lista `matrix.php` del flujo: las pruebas indican si algo se rompe antes de cambiar el servidor.
+
+---
+
+## 7. Lo que NO cambió (contrato de la API)
 
 La migración es transparente para los clientes que consumen la API:
 
@@ -227,7 +284,7 @@ Las pruebas de `tests/Feature/LocationApiTest.php` se escribieron **antes** de m
 
 ---
 
-## 7. Estructura de carpetas
+## 8. Estructura de carpetas
 
 ```
 ANTES (Laravel 7)                       DESPUÉS (Laravel 13)
@@ -235,7 +292,7 @@ ANTES (Laravel 7)                       DESPUÉS (Laravel 13)
 app/                                    app/
 ├─ Console/                             ├─ Console/
 │  ├─ Commands/SyncLocations.php        │  └─ Commands/SyncLocations.php
-│  └─ Kernel.php            ✗           │
+│  └─ Kernel.php            ✗           ├─ Enums/NivelUbigeo.php  ★
 ├─ Exceptions/Handler.php   ✗           │
 ├─ Http/                                ├─ Http/
 │  ├─ Controllers/                      │  └─ Controllers/
@@ -253,13 +310,29 @@ index.php  server.php       ✗           public/            ★
 webpack.mix.js              ✗             ├─ index.php
 favicon.ico robots.txt      → public/     └─ .htaccess
                                         vite.config.js     ★
-tests/ (solo ejemplos)                  tests/ (17 pruebas: API + sync:locations)
+tests/ (solo ejemplos)                  tests/ (27 pruebas: API, sync:locations
+                                               y validación de ubigeos)
+                                        .github/workflows/pruebas.yml  ★
+config/ (14 archivos)                   config/ (10 archivos)
 
 ✗ eliminado   → movido   ★ nuevo
 ```
 
 ---
 
-## 8. Limitación pendiente del diseño original
+## 9. Limitación pendiente del diseño original
 
 Un colegio con **anexo** comparte el mismo código modular (`codMod`) que el local principal, con `anexo = 1`. Como la llave primaria de `schools` es solo `codMod`, el anexo sobrescribe al principal al sincronizar. Corregirlo requiere una llave compuesta `codMod + anexo`, lo que **cambiaría el formato de la API**. Por eso queda fuera del alcance de esta migración, cuyo objetivo es conservar el contrato.
+
+---
+
+## 10. Conclusión
+
+**Sí hubo cambios en la arquitectura, pero en la infraestructura del framework, no en el diseño de la aplicación.**
+
+1. **Cambió cómo arranca la aplicación.** La configuración pasó de 15 clases repartidas en `app/` (Kernels, Handler, middleware y providers) a un solo archivo, `bootstrap/app.php`. El framework absorbió lo que antes era código del proyecto o de paquetes externos (CORS y proxies).
+2. **Cambió el límite de seguridad del despliegue.** El punto de entrada pasó a `public/`, y el `.env` dejó de estar al alcance del navegador.
+3. **No cambió el diseño en capas** (rutas → controlador → modelos → base de datos, con el comando de sincronización como proceso aparte) **ni el contrato de la API**. Las pruebas escritas antes de migrar lo comprueban.
+4. **El código propio se modernizó dentro de esas mismas capas:** enum para la regla del ubigeo, tipos estrictos y funciones de PHP 8.3. La compatibilidad con PHP 8.3, 8.4 y 8.5 se comprueba automáticamente en cada cambio.
+
+Que el diseño propio sobreviviera a un salto de seis versiones mayores de Laravel muestra que la separación en capas del proyecto original era correcta. Lo que envejeció fue la infraestructura del framework, y la migración consistió sobre todo en reemplazarla.

@@ -1,6 +1,10 @@
 # 🏫 Bridges Note - MINEDU ESCALE Bridge API
 
-Microservicio y API REST en **Laravel 13** sobre **PHP 8.3** diseñado para sincronizar, estructurar y servir el catálogo oficial de instituciones educativas (colegios) y la división política/geográfica (regiones, provincias y distritos) del Perú, consumiendo directamente la API pública oficial de **MINEDU / ESCALE** (*Estadística de la Calidad Educativa*).
+[![Pruebas](https://github.com/Melor-Smith/TRABAJO-DE-MIGRACI-N/actions/workflows/pruebas.yml/badge.svg)](https://github.com/Melor-Smith/TRABAJO-DE-MIGRACI-N/actions/workflows/pruebas.yml)
+![PHP](https://img.shields.io/badge/PHP-8.3%20%7C%208.4%20%7C%208.5-777BB4)
+![Laravel](https://img.shields.io/badge/Laravel-13-FF2D20)
+
+Microservicio y API REST en **Laravel 13** sobre **PHP 8.3 o superior** diseñado para sincronizar, estructurar y servir el catálogo oficial de instituciones educativas (colegios) y la división política/geográfica (regiones, provincias y distritos) del Perú, consumiendo directamente la API pública oficial de **MINEDU / ESCALE** (*Estadística de la Calidad Educativa*).
 
 ---
 
@@ -54,7 +58,7 @@ Servir como un **puente de datos optimizado** para aplicaciones cliente (sistema
 
 ## 💻 Requisitos del Sistema
 
-- **PHP:** `8.3.x` (probado con 8.3.36 Thread Safe x64).
+- **PHP:** `8.3` o superior (probado localmente con 8.3.36 Thread Safe x64, y en GitHub Actions con 8.3, 8.4 y 8.5).
   - Extensiones requeridas: `ctype`, `curl`, `fileinfo`, `mbstring`, `openssl`, `pdo_mysql`, `tokenizer`.
   - Para las pruebas: `pdo_sqlite`. Para Composer: `zip`.
 - **Laravel Framework:** `13.x` (probado con 13.42.0)
@@ -273,6 +277,9 @@ Las pruebas usan SQLite en memoria (no tocan tu base MySQL) y **no** llaman al s
 |---|---|
 | `tests/Feature/LocationApiTest.php` | Formato JSON y códigos 200/404 de los 4 endpoints, rechazo de códigos incompletos o con comodines (`%`, `_`) y límite de 60 peticiones por minuto |
 | `tests/Feature/SyncLocationsCommandTest.php` | Sincronización completa, que volver a sincronizar no duplique registros, y el caso en que ESCALE devuelve un objeto en vez de una lista |
+| `tests/Unit/NivelUbigeoTest.php` | Que los códigos de región (2 dígitos), provincia (4) y distrito (6) se validen correctamente |
+
+En total: **27 pruebas, 88 verificaciones**. Además, GitHub Actions (`.github/workflows/pruebas.yml`) las ejecuta en cada push con **PHP 8.3, 8.4 y 8.5** y revisa el formato del código con Pint (`vendor/bin/pint --test`).
 
 ---
 
@@ -280,9 +287,13 @@ Las pruebas usan SQLite en memoria (no tocan tu base MySQL) y **no** llaman al s
 
 ```
 brigesnote/
+├── .github/workflows/
+│   └── pruebas.yml                 # Pruebas automáticas en PHP 8.3, 8.4 y 8.5
 ├── app/
 │   ├── Console/Commands/
 │   │   └── SyncLocations.php       # Comando 'sync:locations' (consumo de API ESCALE)
+│   ├── Enums/
+│   │   └── NivelUbigeo.php         # Niveles del ubigeo: región, provincia, distrito
 │   ├── Http/Controllers/
 │   │   └── LocationController.php  # Controlador de endpoints /api/
 │   ├── Models/
@@ -305,7 +316,7 @@ brigesnote/
 │   └── .htaccess
 ├── routes/
 │   └── api.php                     # Definición de rutas REST
-├── tests/Feature/                  # Pruebas de la API y de la sincronización
+├── tests/                          # Pruebas de la API, la sincronización y los ubigeos
 ├── .env.example                    # Plantilla de variables de entorno
 ├── PLAN_MIGRACION.md               # Plan y resultado de la migración a PHP 8.3
 ├── ARQUITECTURA.md                 # Cambios de arquitectura (antes vs. después)
@@ -327,6 +338,8 @@ El proyecto original funcionaba solo con PHP 7.4 / 8.0 (Laravel 7.30.7). Se migr
 | Punto de entrada en `public/` | Antes el `.env` podía descargarse desde el navegador |
 | Ruta `/api/user` eliminada | Usaba el guard por token `api`, que Laravel 13 ya no incluye |
 | Pruebas automatizadas | Garantizan que la API responde igual que antes |
+| Constantes con tipo, `#[\Override]`, enums y `strict_types` | Aprovechar PHP 8.3 en el código propio |
+| `config.platform.php = 8.3.0` + GitHub Actions | Un mismo `composer.lock` que instala y pasa las pruebas en PHP 8.3, 8.4 y 8.5 |
 
 La API conserva **exactamente** las mismas rutas y el mismo formato de respuesta.
 

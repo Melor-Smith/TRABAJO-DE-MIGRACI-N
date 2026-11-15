@@ -106,6 +106,10 @@ Cada paso es un commit independiente, para poder revisarlo o revertirlo por sepa
 | 9 | `fix: reintentar cuando el MINEDU corta la conexión` | Reintentos en `sync:locations` (agregado durante la verificación, ver sección 9) |
 | 10 | Push | Rama `main` del repositorio de entrega |
 | 11 | `docs: documentar los cambios de arquitectura` | `ARQUITECTURA.md`: comparación antes/después, como caso de estudio |
+| 12 | `refactor: aprovechar PHP 8.3 en el código propio` | Enum `NivelUbigeo`, constantes con tipo, `#[\Override]`, tipos y `strict_types` |
+| 13 | `style: formatear el código con Laravel Pint` | Formato uniforme (estilo de Laravel, basado en PSR-12) |
+| 14 | `ci: probar el proyecto en PHP 8.3, 8.4 y 8.5` | GitHub Actions en cada push |
+| 15 | `docs: compatibilidad con PHP 8.3+ y conclusión de arquitectura` | `ARQUITECTURA.md`, `README.md` y este plan |
 
 ## 7. Criterios de aceptación
 
