@@ -75,12 +75,13 @@ Versiones verificadas en Packagist el 14/11/2026. Algunas versiones más recient
 
 | Archivo | Cambio |
 |---|---|
-| `app/Http/Middleware/TrustProxies.php` | Dejar de usar `Fideloper\Proxy` y la constante eliminada `HEADER_X_FORWARDED_ALL` |
-| `app/Http/Kernel.php` | Quitar `Fruitcake\Cors\HandleCors` y renombrar `CheckForMaintenanceMode` a `PreventRequestsDuringMaintenance` |
+| `app/Http/Kernel.php`, `app/Console/Kernel.php`, `app/Exceptions/Handler.php`, `app/Http/Middleware/*` | Eliminar: en Laravel 13 se configuran en `bootstrap/app.php` y el framework incluye los middleware (`TrustProxies`, `HandleCors`, `PreventRequestsDuringMaintenance`) |
+| `throttle:60,1` del grupo `api` | Pasar a `RateLimiter::for('api')` en `AppServiceProvider` + `throttleApi()` |
 | `app/User.php` | Mover a `app/Models/User.php` |
 | `database/seeds/` | Renombrar a `database/seeders/` con namespace `Database\Seeders` |
 | `database/factories/UserFactory.php` | Pasar al formato de clase (`Factory`) |
-| `app/Providers/RouteServiceProvider.php` | Quitar `$namespace` y adaptar el registro de rutas |
+| `app/Providers/RouteServiceProvider.php` y demás providers | Eliminar: las rutas se registran en `bootstrap/app.php` |
+| Ruta `/api/user` | Eliminar: usa el guard por token `api`, que Laravel 13 ya no incluye |
 | `config/*.php` | Actualizar a los valores de Laravel 13 |
 | Migraciones | Pasar a clases anónimas y quitar el `class_exists` de `schools` |
 | `app/Http/Controllers/LocationController.php` | Cambiar `LEFT(...)` por `LIKE '15%'`, que funciona en cualquier base de datos y usa el índice |
@@ -100,17 +101,18 @@ Cada paso es un commit independiente, para poder revisarlo o revertirlo por sepa
 | 4 | `fix: consultas compatibles con cualquier motor de base de datos` | `LEFT()` por `LIKE` |
 | 5 | `security: mover el punto de entrada a public/` | `.env` fuera del alcance del navegador |
 | 6 | `docs: actualizar README y .env.example` | Requisitos de PHP 8.3, base `escalebridge` |
-| 7 | Push | Rama `main` del repositorio de entrega |
+| 7 | `fix: descargar todos los colegios de cada distrito` | Paginación de la API de ESCALE (agregado durante la verificación, ver sección 9) |
+| 8 | Push | Rama `main` del repositorio de entrega |
 
 ## 7. Criterios de aceptación
 
-- [ ] `php -v` muestra PHP 8.3.x.
-- [ ] `composer install` termina sin errores.
-- [ ] `php artisan migrate` crea las tablas `regions`, `provinces`, `districts` y `schools`.
-- [ ] `php artisan test` pasa todas las pruebas.
-- [ ] Los 4 endpoints (`/api/regiones`, `/api/provincias/{id}`, `/api/distritos/{id}`, `/api/colegios/{ubigeo}`) devuelven el mismo formato JSON documentado en el README.
-- [ ] `php artisan sync:locations` descarga datos reales del MINEDU sin errores.
-- [ ] El archivo `.env` no es accesible desde el navegador.
+- [x] `php -v` muestra PHP 8.3.x. → **PHP 8.3.36 (ZTS x64)**
+- [x] `composer install` termina sin errores. → **Laravel 13.42.0, sin avisos de seguridad**
+- [x] `php artisan migrate` crea las tablas `regions`, `provinces`, `districts` y `schools`. → **MariaDB 10.4.32 (XAMPP)**
+- [x] `php artisan test` pasa todas las pruebas. → **16 pruebas, 72 verificaciones**
+- [x] Los 4 endpoints (`/api/regiones`, `/api/provincias/{id}`, `/api/distritos/{id}`, `/api/colegios/{ubigeo}`) devuelven el mismo formato JSON documentado en el README. → **Probados con datos reales en MySQL**
+- [x] `php artisan sync:locations` descarga datos reales del MINEDU sin errores.
+- [x] El archivo `.env` no es accesible desde el navegador. → **`/.env` responde 404**
 
 ## 8. Riesgos
 
@@ -120,3 +122,28 @@ Cada paso es un commit independiente, para poder revisarlo o revertirlo por sepa
 | No se puede ejecutar el proyecto original para compararlo (requiere PHP 7.4/8.0) | Las pruebas se basan en el contrato documentado en el README |
 | El servidor del MINEDU puede estar lento o caído | Las pruebas usan respuestas simuladas; la sincronización real se prueba una sola vez al final |
 | Una dependencia nueva exige PHP 8.4 | Plataforma fijada en 8.3 en `composer.json` |
+
+## 9. Resultado de la migración (14/11/2026)
+
+La migración se completó y verificó. La API conserva las mismas rutas y el mismo formato de respuesta.
+
+### Hallazgos durante la verificación
+
+| Hallazgo | Origen | Acción |
+|---|---|---|
+| La API de ESCALE devuelve máximo **50 colegios** por consulta si no se envía `max`; los distritos grandes quedaban incompletos (Chachapoyas: 50 de 75; San Juan de Lurigancho: 50 de más de 1,800) | Código original | **Corregido** (commit 7): paginación con `start` y `max` |
+| PHP recién instalado no verifica HTTPS (`cURL error 60`) por falta de certificados raíz | Entorno | Configurado `curl.cainfo` / `openssl.cafile` en `php.ini`; documentado en el README. **No** se desactivó la verificación SSL |
+| `.env` de Laravel 7 usa `CACHE_DRIVER` y `BROADCAST_DRIVER` | Entorno | Renombrados a `CACHE_STORE` y `BROADCAST_CONNECTION`; documentado en el README |
+| Un colegio con anexo (mismo código modular, `anexo = 1`) sobrescribe al principal, porque la llave de `schools` es solo `codMod` | Diseño original | **Pendiente**: requiere una llave compuesta `codMod + anexo`, lo que cambia el formato de la API |
+| Si el servidor del MINEDU no responde (error de red), `sync:locations` se detiene en lugar de continuar con el siguiente distrito | Código original | **Pendiente**: agregar reintentos y tiempo de espera |
+
+### Comandos de verificación
+
+```bash
+php -v                       # PHP 8.3.36
+composer install
+php artisan migrate
+php artisan test             # 16 passed (72 assertions)
+php artisan sync:locations
+php artisan serve            # http://127.0.0.1:8000/api/regiones
+```
