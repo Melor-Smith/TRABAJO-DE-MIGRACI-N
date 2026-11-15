@@ -180,7 +180,7 @@ La API no usa vistas: solo `welcome.blade.php` en `/`. Este cambio sigue el est�
 
 | Antes | Después |
 |---|---|
-| Solo los ejemplos de Laravel (`ExampleTest`) | **27 pruebas, 88 verificaciones**: endpoints, comando `sync:locations` y validación de ubigeos |
+| Solo los ejemplos de Laravel (`ExampleTest`) | **29 pruebas, 99 verificaciones**: endpoints, comando `sync:locations`, validación de ubigeos, CORS integrado y las 4 rutas exactas del contrato |
 | Sin forma de comprobar los endpoints sin MySQL ni internet | Base SQLite en memoria; el servidor del MINEDU se simula con `Http::fake()` |
 | `tests/CreatesApplication.php` | Integrado en el framework (eliminado) |
 | PHPUnit 8/9 | PHPUnit 12, con atributos de PHP 8 (`#[DataProvider]`) |
@@ -310,7 +310,7 @@ index.php  server.php       ✗           public/            ★
 webpack.mix.js              ✗             ├─ index.php
 favicon.ico robots.txt      → public/     └─ .htaccess
                                         vite.config.js     ★
-tests/ (solo ejemplos)                  tests/ (27 pruebas: API, sync:locations
+tests/ (solo ejemplos)                  tests/ (29 pruebas: API, sync:locations
                                                y validación de ubigeos)
                                         .github/workflows/pruebas.yml  ★
 config/ (14 archivos)                   config/ (10 archivos)

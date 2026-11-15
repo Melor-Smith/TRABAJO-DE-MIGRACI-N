@@ -275,11 +275,11 @@ Las pruebas usan SQLite en memoria (no tocan tu base MySQL) y **no** llaman al s
 
 | Archivo | Qué verifica |
 |---|---|
-| `tests/Feature/LocationApiTest.php` | Formato JSON y códigos 200/404 de los 4 endpoints, rechazo de códigos incompletos o con comodines (`%`, `_`) y límite de 60 peticiones por minuto |
+| `tests/Feature/LocationApiTest.php` | Formato JSON y códigos 200/404 de los 4 endpoints, rechazo de códigos incompletos o con comodines (`%`, `_`), límite de 60 peticiones por minuto, flujo CORS de un navegador (preflight + consulta) y que `/api` publique exactamente las 4 rutas del contrato |
 | `tests/Feature/SyncLocationsCommandTest.php` | Sincronización completa, que volver a sincronizar no duplique registros, y el caso en que ESCALE devuelve un objeto en vez de una lista |
 | `tests/Unit/NivelUbigeoTest.php` | Que los códigos de región (2 dígitos), provincia (4) y distrito (6) se validen correctamente |
 
-En total: **27 pruebas, 88 verificaciones**. Además, GitHub Actions (`.github/workflows/pruebas.yml`) las ejecuta en cada push con **PHP 8.3, 8.4 y 8.5** y revisa el formato del código con Pint (`vendor/bin/pint --test`).
+En total: **29 pruebas, 99 verificaciones**. Además, GitHub Actions (`.github/workflows/pruebas.yml`) las ejecuta en cada push con **PHP 8.3, 8.4 y 8.5** y revisa el formato del código con Pint (`vendor/bin/pint --test`).
 
 ---
 

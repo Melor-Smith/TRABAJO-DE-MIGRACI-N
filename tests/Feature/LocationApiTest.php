@@ -7,6 +7,8 @@ use App\Models\Province;
 use App\Models\Region;
 use App\Models\School;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Routing\Route as Ruta;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 /**
@@ -129,5 +131,53 @@ class LocationApiTest extends TestCase
         $this->getJson('/api/regiones')
             ->assertOk()
             ->assertHeader('X-RateLimit-Limit', '60');
+    }
+
+    /**
+     * Un cliente web en otro dominio (por ejemplo, un sistema de admisión)
+     * hace dos peticiones: primero el navegador pregunta si puede consultar
+     * la API (preflight) y luego hace la consulta real.
+     *
+     * En Laravel 7 esto dependía del paquete fruitcake/laravel-cors; en
+     * Laravel 13 lo resuelve el middleware HandleCors del framework.
+     */
+    public function test_un_cliente_web_de_otro_dominio_completa_el_flujo_cors(): void
+    {
+        $origen = 'https://admision.ejemplo.edu.pe';
+
+        $this->call('OPTIONS', '/api/provincias/15', server: [
+            'HTTP_ORIGIN' => $origen,
+            'HTTP_ACCESS_CONTROL_REQUEST_METHOD' => 'GET',
+        ])
+            ->assertNoContent()
+            ->assertHeader('Access-Control-Allow-Origin', '*')
+            ->assertHeader('Access-Control-Allow-Methods', 'GET');
+
+        $this->getJson('/api/provincias/15', ['Origin' => $origen])
+            ->assertOk()
+            ->assertHeader('Access-Control-Allow-Origin', '*')
+            ->assertJsonPath('status', 'success');
+    }
+
+    /**
+     * El contrato de la API son exactamente estas 4 rutas de solo lectura.
+     * Si se agrega, quita o cambia una ruta bajo /api (como la antigua
+     * /api/user de Laravel 7), esta prueba lo detecta.
+     */
+    public function test_la_api_publica_solo_las_cuatro_rutas_del_contrato(): void
+    {
+        $rutasApi = collect(Route::getRoutes()->getRoutes())
+            ->filter(fn (Ruta $ruta) => str_starts_with($ruta->uri(), 'api/'))
+            ->map(fn (Ruta $ruta) => implode('|', $ruta->methods()).' '.$ruta->uri())
+            ->sort()
+            ->values()
+            ->all();
+
+        $this->assertSame([
+            'GET|HEAD api/colegios/{ubigeo}',
+            'GET|HEAD api/distritos/{idProvince}',
+            'GET|HEAD api/provincias/{idRegion}',
+            'GET|HEAD api/regiones',
+        ], $rutasApi);
     }
 }
